@@ -7,6 +7,8 @@ import java.util.List;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -32,6 +34,8 @@ import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+
+import org.springframework.web.bind.annotation.CookieValue;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.RequestMethod;
 
@@ -47,69 +51,75 @@ public class UserController {
     @Autowired
     private UserRepository UserRepository;
 
-    @PostMapping("/login")
-    @Operation(
-        summary = "API USED FOR USER LOGIN",
-        responses = {
-            @ApiResponse(
-                responseCode = "200",
-                description = "USER SUCCESSFULLY LOGGED IN",
-                content = @Content(
-                    schema = @Schema(implementation = LoginResponse.class)
-                )
-            ),
-            @ApiResponse(
-                responseCode = "400",
-                description = "SOME OF THE REQUEST ITEMS ARE INVALID",
-                content = @Content(
-                    schema = @Schema(implementation = ResponseObject.class)   
-                )
-            ),
-            @ApiResponse(
-                responseCode = "500",
-                description = "AN ISSUE OCCURRED ON THE SERVER",
-                content = @Content(
-                    schema = @Schema(implementation = ResponseObject.class)
-                )
-            ),
-            @ApiResponse(
-                responseCode = "403",
-                description = "USER NOT FOUND",
-                content = @Content(
-                    schema = @Schema(implementation = ResponseObject.class)
-                )
+    
+
+@PostMapping("/login")
+@Operation(
+    summary = "API USED FOR USER LOGIN",
+    responses = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "USER SUCCESSFULLY LOGGED IN",
+            content = @Content(
+                schema = @Schema(implementation = LoginResponse.class)
             )
-        }
-    )
-    public ResponseEntity<ResponseObject> login(
-        @io.swagger.v3.oas.annotations.parameters.RequestBody
-        @RequestBody LoginRequest request){
-
-        ResponseEntity<ResponseObject> validate = request.validate();
-
-        if(validate != null){
-
-            return validate;
-
-        }
-
-        UserDto UserDto = UserRepository.login(request.email(), request.password());
-
-        if(UserDto == null){
-
-            return formatResponse(
-                HttpStatus.FORBIDDEN, 
-                ResponseObject.builder().error("User not found").build()
-            );
-
-        }
-
-        return formatResponse(
-            HttpStatus.OK, 
-            new LoginResponse(UserDto, "User successfully logged in")
-        );
-
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "SOME OF THE REQUEST ITEMS ARE INVALID",
+            content = @Content(
+                schema = @Schema(implementation = ResponseObject.class)   
+            )
+        ),
+        @ApiResponse(
+            responseCode = "500",
+            description = "AN ISSUE OCCURRED ON THE SERVER",
+            content = @Content(
+                schema = @Schema(implementation = ResponseObject.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "403",
+            description = "USER NOT FOUND",
+            content = @Content(
+                schema = @Schema(implementation = ResponseObject.class)
+            )
+        )
     }
+)
+public ResponseEntity<ResponseObject> login(
+    @io.swagger.v3.oas.annotations.parameters.RequestBody
+    @RequestBody LoginRequest request){
+
+    ResponseEntity<ResponseObject> validate = request.validate();
+
+    if(validate != null){
+        return validate;
+    }
+
+    UserDto userDto = UserRepository.login(request.email(), request.password());
+
+    if(userDto == null){
+        return formatResponse(
+            HttpStatus.FORBIDDEN, 
+            ResponseObject.builder().error("User not found").build()
+        );
+    }
+
+    String sessionId = "some-generated-session-id";
+
+    ResponseCookie cookie = ResponseCookie.from("user-session", sessionId)
+        .httpOnly(true)
+        .secure(true)
+        .path("/")
+        .maxAge(3600)
+        .build();
+
+    return ResponseEntity.ok()
+        .header(HttpHeaders.SET_COOKIE, cookie.toString())
+        .body(new LoginResponse(userDto, "User successfully logged in"));
+}
+
 
     @PostMapping("/create")
     @Operation(
@@ -308,79 +318,83 @@ public class UserController {
     }
 
     @PostMapping("/retrieve")
-    @Operation(
-        summary = "API USED TO RETRIEVE USERS",
-        responses = {
-            @ApiResponse(
-                responseCode = "200",
-                description = "USER SUCCESSFULLY RETRIEVED",
-                content = @Content(
-                    schema = @Schema(implementation = RetrieveUsersResponse.class)
-                )
-            ),
-            @ApiResponse(
-                responseCode = "400",
-                description = "SOME ERROR IN THE REQUEST ITEMS",
-                content = @Content(
-                    schema = @Schema(implementation = ResponseObject.class)
-                )
-            ),
-            @ApiResponse(
-                responseCode = "404",
-                description = "NO USER FOUND",
-                content = @Content(
-                    schema = @Schema(implementation = ResponseObject.class)
-                )
+@Operation(
+    summary = "API USED TO RETRIEVE USERS",
+    responses = {
+        @ApiResponse(
+            responseCode = "200",
+            description = "USER SUCCESSFULLY RETRIEVED",
+            content = @Content(
+                schema = @Schema(implementation = RetrieveUsersResponse.class)
             )
-        }
-    )
-    public ResponseEntity<ResponseObject> retrieveUser(
-        @io.swagger.v3.oas.annotations.parameters.RequestBody
-        @RequestBody RetrieveUserRequest request){
-
-        ResponseEntity<ResponseObject> validate = request.validate();
-
-        if(validate != null){
-
-            return validate;
-
-        }
-
-      List<UserDto>   UserDtos = null;
-
-        if(request.cpf() != null){
-
-            UserDtos = UserRepository.retrieveUserByCpf(request.cpf());
-
-        }
-
-        if(request.email() != null){
-
-            UserDtos = UserRepository.retrieveUserByEmail(request.email());
-
-        }
-
-        if(request.name() != null){
-
-            UserDtos = UserRepository.retrieveUserByName(request.name());
-
-        }
-
-        if(UserDtos == null || UserDtos.size() < 1){
-
-            return formatResponse(
-                HttpStatus.NOT_FOUND, 
-                ResponseObject.builder().error("No user found").build()
-            );
-
-        }
-
-        return formatResponse(
-            HttpStatus.OK, 
-            new RetrieveUsersResponse(UserDtos, "User(s) found")
-        );
-
+        ),
+        @ApiResponse(
+            responseCode = "400",
+            description = "SOME ERROR IN THE REQUEST ITEMS",
+            content = @Content(
+                schema = @Schema(implementation = ResponseObject.class)
+            )
+        ),
+        @ApiResponse(
+            responseCode = "404",
+            description = "NO USER FOUND",
+            content = @Content(
+                schema = @Schema(implementation = ResponseObject.class)
+            )
+        )
     }
+)
+
+ private boolean validateSession(String sessionId) {
+        return UserRepository.isSessionValid(sessionId);
+    }
+
+public ResponseEntity<ResponseObject> retrieveUser(
+    @CookieValue("user-session") String sessionId,
+    @RequestBody RetrieveUserRequest request){
+
+    boolean isSessionValid = validateSession(sessionId);
+
+    if (!isSessionValid) {
+        return formatResponse(
+            HttpStatus.UNAUTHORIZED, 
+            ResponseObject.builder().error("Session expired or invalid").build()
+        );
+    }
+
+    ResponseEntity<ResponseObject> validate = request.validate();
+
+    if(validate != null){
+        return validate;
+    }
+
+    List<UserDto> userDtos = null;
+
+    if(request.cpf() != null){
+        userDtos = UserRepository.retrieveUserByCpf(request.cpf());
+    }
+
+    if(request.email() != null){
+        userDtos = UserRepository.retrieveUserByEmail(request.email());
+    }
+
+    if(request.name() != null){
+        userDtos = UserRepository.retrieveUserByName(request.name());
+    }
+
+    if(userDtos == null || userDtos.size() < 1){
+        return formatResponse(
+            HttpStatus.NOT_FOUND, 
+            ResponseObject.builder().error("No user found").build()
+        );
+    }
+
+    return formatResponse(
+        HttpStatus.OK, 
+        new RetrieveUsersResponse(userDtos, "User(s) found")
+    );
+}
+
  
 
     
